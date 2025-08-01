@@ -15,4 +15,4 @@ tifffile = ">=2025.6.11,<2026"
 scipy = ">=1.16,<2"
 
 [tasks]
-st = "streamlit run app.py"
+st = "streamlit run streamlit_app.py"
