@@ -1,0 +1,18 @@
+[workspace]
+authors = ["Hernan Grecco <hgrecco@gmail.com>"]
+channels = ["conda-forge"]
+name = "streamlit_imtools"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[dependencies]
+python = "==3.12"
+streamlit = ">=1.47.1,<2"
+numpy = ">=2.3.2,<3"
+scikit-image = ">=0.25.2,<0.26"
+matplotlib = ">=3.10.3,<4"
+tifffile = ">=2025.6.11,<2026"
+scipy = ">=1.16,<2"
+
+[tasks]
+st = "streamlit run app.py"
