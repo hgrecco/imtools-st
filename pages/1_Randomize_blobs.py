@@ -67,7 +67,7 @@ with st.container(border=True):
                 out.append(im)
             bar.progress(100, "done")
 
-        if cnt != num_variations:
+        if cnt == num_variations:
             st.success(f"🎉 Generated {cnt} random images.")
         else:
             st.warning(f"Could not place all blobs in {num_variations-cnt} images.")

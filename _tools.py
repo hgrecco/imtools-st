@@ -50,25 +50,11 @@ class Regionprops(NamedTuple):
     bbox: tuple[int, int, int, int]
     centroid: FloatCoodArray
     equivalent_diameter_area: Float
+    image: MaskImage
 
 
 def typed_regionprops(labeled_mask: LabeledImage) -> list[Regionprops]:
     return regionprops(labeled_mask) # type: ignore
-
-
-# Blob structure for extracted blobs
-class Blob(NamedTuple):
-    label: Label
-    mask: MaskImage
-
-    @property
-    def shape(self) -> tuple[int, int]:
-        return self.mask.shape
-    
-    @property
-    def area(self) -> int:
-        return np.sum(self.mask, dtype=int, initial=0)
-    
 
 class PolarValues(NamedTuple):
     radii: FloatVector
@@ -110,38 +96,58 @@ def read_intensity_image_or_stack(file: Any) -> IntensityImage | IntensityStack:
     """Reads a intensity image from a file-like object."""
     return _imread(file)   # type: ignore
 
+def try_place_blob(
+    blob_coords: FloatCoodArray,
+    placed_mask: LabeledImage,
+    label_id: int
+) -> bool:
 
-def extract_blobs(labeled_mask: LabeledImage) -> list[Blob]:
-    blobs: list[Blob] = []
-    for region in typed_regionprops(labeled_mask):
-        minr, minc, maxr, maxc = region.bbox
-        blob = labeled_mask[minr:maxr, minc:maxc] == region.label
-        blobs.append(Blob(region.label, blob))
-    return blobs
-
-
-def try_place_blob(blob: MaskImage, position: tuple[int, int], placed_mask: LabeledImage, label_id: Label) -> bool:
-    rows, cols = blob.shape
-    r, c = position
-    if r + rows > placed_mask.shape[0] or c + cols > placed_mask.shape[1]:
+    # Bounds check
+    if (
+        (blob_coords[:, 0] < 0).any() or
+        (blob_coords[:, 1] < 0).any() or
+        (blob_coords[:, 0] >= placed_mask.shape[0]).any() or
+        (blob_coords[:, 1] >= placed_mask.shape[1]).any()
+    ):
         return False
-    if np.any(placed_mask[r:r+rows, c:c+cols][blob]):
+
+    # Overlap check
+    if np.any(placed_mask[blob_coords[:, 0], blob_coords[:, 1]]):
         return False
-    placed_mask[r:r+rows, c:c+cols][blob] = label_id
+
+    # Place blob
+    placed_mask[blob_coords[:, 0], blob_coords[:, 1]] = label_id
     return True
 
-def randomly_place_blobs(labeled_mask: LabeledImage, binary_mask: MaskImage) -> tuple[bool, LabeledImage]:
-    blobs = extract_blobs(labeled_mask)
-    blobs.sort(key=lambda b: b.area, reverse=True)
+
+def randomly_place_blobs(
+    labeled_mask: LabeledImage,
+    binary_mask: MaskImage,
+) -> tuple[bool, np.ndarray]:
+    blobs = typed_regionprops(labeled_mask)
     placed_mask = np.zeros_like(binary_mask, dtype=np.int32)
-    for blob in blobs:
-        candidate_mask = binary_mask & (placed_mask == 0)
-        possible_positions = np.argwhere(candidate_mask)
+
+    available_spots = np.copy(binary_mask)
+
+    blobs.sort(key=lambda b: b.area, reverse=True)
+
+    for blob in blobs:        
+        if blob.area == 0:
+            continue 
+
+        blob_coords = np.argwhere(blob.image).astype(int)
+        blob_coords = blob_coords - np.min(blob_coords, axis=0)
+
+        possible_positions = np.argwhere(available_spots)
         np.random.shuffle(possible_positions)
-        for r, c in possible_positions:
-            if try_place_blob(blob.mask, (r, c), placed_mask, blob.label):
+
+        for position in possible_positions:
+            coords = blob_coords + position
+            if try_place_blob(coords, placed_mask, blob.label):
+                available_spots[coords[:, 0], coords[:, 1]] = False
                 break
         else:
+            print(f"Cannot place blob {blob.area}, available {possible_positions.shape}")
             return False, placed_mask
 
     return True, placed_mask
@@ -286,7 +292,7 @@ def image_to_bytes(im: LabeledImage, format: str = "png") -> bytes:
         return buf.getvalue()
     elif format in ("tif", "tiff"):
         buf = io.BytesIO()
-        tifffile.imwrite(buf)
+        tifffile.imwrite(buf, im)
         return buf.getvalue()
     else:
         raise ValueError(f"Unsupported image format: {format}")
