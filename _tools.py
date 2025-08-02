@@ -291,8 +291,10 @@ def image_to_bytes(im: LabeledImage, format: str = "png") -> bytes:
         imsave(buf, im, format='png')
         return buf.getvalue()
     elif format in ("tif", "tiff"):
+        from PIL import Image
+        image = Image.fromarray(im)
         buf = io.BytesIO()
-        tifffile.imwrite(buf, im)
+        image.save(buf, format='TIFF')
         return buf.getvalue()
     else:
         raise ValueError(f"Unsupported image format: {format}")
