@@ -1,10 +1,16 @@
 import io
+import pathlib
+import platform
 from typing import Any, Literal, NamedTuple, TypeGuard, overload
 import zipfile
 
+
+import pandas as pd
 from scipy.stats import binned_statistic_2d
 from skimage.io import imread, imsave # type: ignore
 from skimage.measure import regionprops # type: ignore
+import skimage.morphology as skm
+
 import tifffile
 import numpy as np
 
@@ -21,6 +27,8 @@ type FloatVector = np.ndarray[tuple[int, ...], np.dtype[np.floating]]
 type Float = float | np.floating[Any]
 
 type Label = int | np.integer[Any]
+
+__version__ = '2025-08-20'
 
 def _check(obj: Any, dtype: np.typing.DTypeLike, ndim: int) -> bool:
     if not isinstance(obj, np.ndarray):
@@ -69,6 +77,18 @@ class BinnedStatistic2dResultPerChannel[M: int, N: int, S: int](NamedTuple):
     channels: list[str]
     x_label: str = "x"
     y_label: str = "y"
+
+
+def stats(vec: FloatVector) -> dict[str, Any]:
+    return {
+        "mean": np.mean(vec),
+        "std": np.std(vec),
+        "median": np.median(vec),
+        "iqr": np.subtract(*np.percentile(vec, [75, 25])),
+        "max": np.max(vec),
+        "min": np.min(vec),
+        "size": vec.size,
+    }
 
 
 KNOWN_IMAGE_FORMATS = ("png", "tiff")
@@ -235,6 +255,50 @@ def polar_values(
 
     return out
 
+def erode_dilate(image: MaskImage, radius: int):
+    if radius == 0:
+        return image
+    footprint = skm.disk(radius)
+
+    if radius > 0:
+        return skm.binary_dilation(image, footprint)
+    else:
+        return skm.binary_erosion(image, footprint)
+
+
+def labeled_image_stats(
+    labeled_mask: LabeledImage,
+    intensity_images: dict[str, IntensityImage],
+    internal: int,
+    rings: list[tuple[int, int]] 
+) -> dict[Label, dict[str, Any]]:
+
+    out: dict[Label, dict[str, Any]] = {}
+
+    for region in typed_regionprops(labeled_mask):
+
+        mask = labeled_mask == region.label
+
+        m = erode_dilate(mask, internal)
+        tmp = {
+            f"ch_{kim}_inner_{kstat}": v 
+            for kim, im in intensity_images.items()
+            for kstat, v in stats(im[m].flatten()).items()
+        }
+
+        for ndx, (inner, outer) in enumerate(rings):
+            m = np.logical_and(erode_dilate(mask, outer), np.logical_not(erode_dilate(mask, inner)))
+            tmp.update( {
+                f"ch_{kim}_ring{ndx}_{kstat}": v 
+                for kim, im in intensity_images.items()
+                for kstat, v in stats(im[m].flatten()).items()
+            })
+
+        out[region.label] = tmp
+
+    return out
+
+
 
 @overload
 def build_polar_histogram(content: dict[Label, PolarValues], radial_bins: int, angular_bins: int) -> dict[Label, BinnedStatistic2dResultPerChannel[int, int, int]]:
@@ -333,3 +397,33 @@ def rescale(input_array: RGBImage) -> RGBImage:
     rescaled_array = np.clip(rescaled_array, 0, 1)
 
     return rescaled_array
+
+def versions() -> list[tuple[str, str]]:
+    """Return list of used packages and their versions.
+    """
+    import scipy as sp
+    import matplotlib as mpl
+    import PIL
+    import skimage as sk
+    import tifffile as tf
+    import openpyxl
+
+    return [
+        ("Python", platform.python_version()),
+        ("NumPy", np.version.version),
+        ("SciPy", sp.__version__),
+        ("Pandas", pd.__version__),
+        ("matplotlib", mpl.__version__),
+        ("pillow", PIL.__version__),
+        ("skimage", sk.__version__),
+        ("tifffile", tf.__version__),
+        ("openpyxl", openpyxl.__version__),
+        ("imtools-st", __version__),
+    ]
+
+
+def generate_excel_file(path: pathlib.Path, sheetname_2_df: dict[str, pd.DataFrame]):
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        for sheet_name, sheet_df in sheetname_2_df.items():
+            sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
