@@ -6,3 +6,4 @@ matplotlib>=3.10.3,<4
 tifffile>=2025.6.11,<2026
 scipy>=1.16,<2
 pillow>=11.3.0,<12
+openpyxl
