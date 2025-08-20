@@ -1,5 +1,7 @@
 import streamlit as st
 
+import _tools
+
 st.set_page_config(
     page_title="Welcome",
     page_icon="👋",
@@ -21,3 +23,8 @@ Hernán Grecco
 
 """
 )
+
+
+with st.expander("Packages"):
+    st.text("  \n".join([f"{k}: {v}" for k, v in _tools.versions()]))
+        
