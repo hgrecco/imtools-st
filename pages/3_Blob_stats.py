@@ -1,4 +1,5 @@
 
+import hashlib
 import pathlib
 import tempfile
 import streamlit as st
@@ -94,8 +95,15 @@ with st.container(border=True):
 
             df_settings = pd.DataFrame.from_records(
                 [
-                    {"key": "labeled mask", "value": str(labeled_mask_file)},
-                    {"key": "image files", "value": str(im_files)},
+                    {"key": "labeled mask name", "value": labeled_mask_file.name},
+                    {"key": "labeled mask sha1", "value": hashlib.sha1(labeled_mask_file.getbuffer()).hexdigest()},
+                ] + [
+                    {"key": f"intensity image name #{ndx}", "value": im.name}
+                    for ndx, im in enumerate(im_files)
+                ] + [
+                    {"key": f"intensity image sha1 #{ndx}", "value": hashlib.sha1(im.getbuffer()).hexdigest()}
+                    for ndx, im in enumerate(im_files)
+                ] + [
                     {"key": "internal", "value": internal},
                     {"key": "ring1 inner", "value": ring1_inner},
                     {"key": "ring1 outer", "value": ring1_outer},
