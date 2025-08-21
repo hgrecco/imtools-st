@@ -114,7 +114,7 @@ with st.container(border=True):
         with st.spinner("Generating output document ..."):
             with tempfile.TemporaryDirectory() as folder:
                 folder = pathlib.Path(folder)
-                file = folder / "results.pdf"
+                file = folder / "polar_maps.pdf"
 
                 # (3, M, N)
                 color_img = _tools.rescale(
