@@ -80,6 +80,16 @@ class BinnedStatistic2dResultPerChannel[M: int, N: int, S: int](NamedTuple):
 
 
 def stats(vec: FloatVector) -> dict[str, Any]:
+    if len(vec) == 0:
+        return {
+            "mean": np.nan,
+            "std": np.nan,
+            "median": np.nan,
+            "iqr": np.nan,
+            "max": np.nan,
+            "min": np.nan,
+            "size": 0,
+        }
     return {
         "mean": np.mean(vec),
         "std": np.std(vec),
@@ -255,10 +265,10 @@ def polar_values(
 
     return out
 
-def erode_dilate(image: MaskImage, radius: int):
+def erode_dilate(image: MaskImage, radius: int) -> MaskImage:
     if radius == 0:
         return image
-    footprint = skm.disk(radius)
+    footprint = skm.disk(abs(radius))
 
     if radius > 0:
         return skm.binary_dilation(image, footprint)
@@ -271,15 +281,22 @@ def labeled_image_stats(
     intensity_images: dict[str, IntensityImage],
     internal: int,
     rings: list[tuple[int, int]] 
-) -> dict[Label, dict[str, Any]]:
+) -> tuple[dict[Label, dict[str, Any]], MaskImage]:
 
     out: dict[Label, dict[str, Any]] = {}
+
+    full_mask = np.zeros((2 + len(rings), ) + labeled_mask.shape, dtype=np.bool_)
+
+    full_mask[0] = labeled_mask > 0
 
     for region in typed_regionprops(labeled_mask):
 
         mask = labeled_mask == region.label
 
         m = erode_dilate(mask, internal)
+
+        full_mask[1] = np.logical_or(full_mask[1], m)
+
         tmp = {
             f"ch_{kim}_inner_{kstat}": v 
             for kim, im in intensity_images.items()
@@ -288,6 +305,7 @@ def labeled_image_stats(
 
         for ndx, (inner, outer) in enumerate(rings):
             m = np.logical_and(erode_dilate(mask, outer), np.logical_not(erode_dilate(mask, inner)))
+            full_mask[ndx+2] = np.logical_or(full_mask[ndx+2], m)
             tmp.update( {
                 f"ch_{kim}_ring{ndx}_{kstat}": v 
                 for kim, im in intensity_images.items()
@@ -296,7 +314,7 @@ def labeled_image_stats(
 
         out[region.label] = tmp
 
-    return out
+    return out, full_mask
 
 
 
@@ -356,10 +374,17 @@ def image_to_bytes(im: LabeledImage, format: str = "png") -> bytes:
         return buf.getvalue()
     elif format in ("tif", "tiff"):
         from PIL import Image
-        image = Image.fromarray(im)
-        buf = io.BytesIO()
-        image.save(buf, format='TIFF')
-        return buf.getvalue()
+        if im.ndim == 2:
+            im = im[:, :, np.newaxis]
+            image = Image.fromarray(im)
+            buf = io.BytesIO()
+            image.save(buf, format='TIFF')
+            return buf.getvalue()
+        elif im.ndim == 3:
+            images = [Image.fromarray(im[ndx]) for ndx in range(im.shape[0])]
+            buf = io.BytesIO()
+            images[0].save(buf, format="TIFF", save_all=True, append_images=images[1:])
+            return buf.getvalue()
     else:
         raise ValueError(f"Unsupported image format: {format}")
     

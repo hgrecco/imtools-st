@@ -75,14 +75,14 @@ with st.container(border=True):
 
     st.subheader("Ring 2")
     col1, col2  = st.columns(2)
-    ring2_inner = col1.number_input("Erode/Dilate  blob for min boundary", min_value=-50, max_value=50, value=6, step=1)
-    ring2_outer = col2.number_input("Erode/Dilate  blob for max boundary", min_value=-50, max_value=50, value=8, step=1)
+    ring2_inner = col1.number_input("Erode/Dilate blob for inner boundary", min_value=-50, max_value=50, value=6, step=1)
+    ring2_outer = col2.number_input("Erode/Dilate blob for outer boundary", min_value=-50, max_value=50, value=8, step=1)
 
     if st.button("🚀 Analyze image"):
 
         with st.spinner("Working ..."):
 
-            out = _tools.labeled_image_stats(
+            out, full_mask = _tools.labeled_image_stats(
                 labeled_mask, 
                 intensity_imgs,
                 internal,
@@ -118,8 +118,14 @@ with st.container(border=True):
 
                 st.success("🎉 Done")
 
-                st.download_button("Download results", 
-                                data=file.read_bytes(),
-                                file_name="results.xlsx",
-                                icon=":material/download:"
-                                )
+                st.download_button(
+                    "Download results", 
+                    data=_tools.create_zip_in_memory(
+                        {
+                            "multimask.tif": _tools.image_to_bytes(full_mask, "tif"),
+                            "blob_stats.xlsx": file.read_bytes(),
+                        },
+                    ),
+                    file_name="blob_stats.zip",
+                    icon=":material/download:"
+                )
