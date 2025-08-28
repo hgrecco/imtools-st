@@ -375,7 +375,6 @@ def image_to_bytes(im: LabeledImage, format: str = "png") -> bytes:
     elif format in ("tif", "tiff"):
         from PIL import Image
         if im.ndim == 2:
-            im = im[:, :, np.newaxis]
             image = Image.fromarray(im)
             buf = io.BytesIO()
             image.save(buf, format='TIFF')
